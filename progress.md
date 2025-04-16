@@ -37,7 +37,8 @@
   - [x] WebSocket server for real-time data
   - [x] Sensor assignment API
   - [x] Realistic mock data generation
-  - [x] Unit tests
+  - [x] Code refactoring for better organization
+  - [x] Unit tests for data generation
   - [ ] Integration testing
 - [ ] Docker setup
   - [x] Dockerfile for frontend
@@ -63,6 +64,11 @@
 - Improved WebSocket communication with batch data transmission
 - Implemented efficient data management with 5-minute retention
 - Added comprehensive debugging and logging throughout the system
+- Fixed issue with inactive sensors still generating data
+- Added "Clear Data" button to reset visualizations
+- Added automatic disconnection detection for sensors
+- Refactored MockDataGenerator into a separate class with unit tests
+- Improved data precision to ensure consistent visualization
 
 ## Evolution Log
 - 2025-04-16: Initial project setup and documentation
@@ -81,3 +87,9 @@
 - 2025-04-16: Enhanced chart visualization with highlighted latest data points
 - 2025-04-16: Implemented data generation based on sensor data_rate
 - 2025-04-16: Added coherent data transitions with limited rate of change
+- 2025-04-16: Fixed issue with inactive sensors still generating data
+- 2025-04-16: Added "Clear Data" button to reset visualizations
+- 2025-04-16: Added automatic disconnection detection for sensors
+- 2025-04-16: Refactored MockDataGenerator into a separate class
+- 2025-04-16: Added comprehensive unit tests for data generation
+- 2025-04-16: Improved data precision to ensure consistent visualization
