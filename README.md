@@ -50,7 +50,7 @@ The EGG Monitor provides real-time visualization of electrogastrogram data throu
 
 1. Clone the repository
 ```bash
-git clone https://github.com/pangelini777/egg-monitor.git
+git clone https://github.com/yourusername/egg-monitor.git
 cd egg-monitor
 ```
 
@@ -103,4 +103,3 @@ python -m pytest
 ```bash
 cd frontend
 npm test
-```
