@@ -33,6 +33,6 @@ services:
       - DATABASE_URL=sqlite:///database/egg_monitor.db
     restart: unless-stopped
 
-  # Database volume
+# Database volume
 volumes:
   database_data:
