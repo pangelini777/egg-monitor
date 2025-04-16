@@ -48,9 +48,11 @@
 ## Recent Improvements
 1. Completely redesigned data generation and visualization system:
    - Backend now generates realistic mock data in real-time using sine waves
+   - Number of data points generated based on each sensor's data_rate
    - Each sensor has a unique pattern with different frequencies
-   - Added random noise and occasional artifacts to simulate real EGG data
-   - Implemented continuous waveforms by maintaining phase information
+   - Implemented coherent data transitions with limited rate of change
+   - Added small random variations and occasional artifacts to simulate real EGG data
+   - Maintained continuous waveforms by tracking phase and last values
 
 2. Improved data management in the frontend:
    - Implemented efficient clearing of data older than 5 minutes

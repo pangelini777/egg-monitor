@@ -10,6 +10,7 @@ export default function PresentationScreen() {
   const [timeRange, setTimeRange] = useState(60); // Default 60 seconds (1 minute)
   const [sensorData, setSensorData] = useState({});
   const [connectionStatus, setConnectionStatus] = useState({});
+  const [lastDataReceived, setLastDataReceived] = useState({});
   
   // Fetch users and their sensors
   useEffect(() => {
@@ -124,10 +125,16 @@ export default function PresentationScreen() {
             };
           });
           
-          // Update connection status
+          // Update connection status and last data received time
           setConnectionStatus(prev => ({
             ...prev,
             [data.sensor_id]: true
+          }));
+          
+          // Update last data received timestamp
+          setLastDataReceived(prev => ({
+            ...prev,
+            [data.sensor_id]: Date.now()
           }));
         }
         // Handle batch data for multiple sensors
@@ -181,6 +188,12 @@ export default function PresentationScreen() {
               setConnectionStatus(prev => ({
                 ...prev,
                 [numericSensorId]: true
+              }));
+              
+              // Update last data received timestamp
+              setLastDataReceived(prev => ({
+                ...prev,
+                [numericSensorId]: Date.now()
               }));
             });
             
@@ -272,6 +285,44 @@ export default function PresentationScreen() {
     // Clean up interval on unmount
     return () => clearInterval(cleanupInterval);
   }, [timeRange]);
+  
+  // Check for disconnected sensors
+  useEffect(() => {
+    const checkConnectionStatus = () => {
+      const now = Date.now();
+      const disconnectThreshold = 2000; // 2 seconds without data = disconnected
+      
+      // Get all sensor IDs from users
+      const allSensorIds = [];
+      users.forEach(user => {
+        if (user.sensors && user.sensors.length > 0) {
+          user.sensors.forEach(sensor => {
+            allSensorIds.push(sensor.id);
+          });
+        }
+      });
+      
+      // Check each sensor's last data received time
+      allSensorIds.forEach(sensorId => {
+        const lastReceived = lastDataReceived[sensorId] || 0;
+        const timeSinceLastData = now - lastReceived;
+        
+        // If it's been too long since we received data, mark as disconnected
+        if (timeSinceLastData > disconnectThreshold) {
+          setConnectionStatus(prev => ({
+            ...prev,
+            [sensorId]: false
+          }));
+        }
+      });
+    };
+    
+    // Check connection status every second
+    const connectionCheckInterval = setInterval(checkConnectionStatus, 1000);
+    
+    // Clean up interval on unmount
+    return () => clearInterval(connectionCheckInterval);
+  }, [users, lastDataReceived]);
 
   return (
     <main className="container mx-auto px-4 py-8">
@@ -283,9 +334,17 @@ export default function PresentationScreen() {
       </header>
 
       <div className="mb-6">
-        <label htmlFor="timeRange" className="block text-sm font-medium text-gray-700 mb-1">
-          Time Range: {timeRange} seconds
-        </label>
+        <div className="flex justify-between items-center mb-2">
+          <label htmlFor="timeRange" className="block text-sm font-medium text-gray-700">
+            Time Range: {timeRange} seconds
+          </label>
+          <button
+            onClick={() => setSensorData({})}
+            className="px-4 py-1 bg-red-500 text-white text-sm font-medium rounded hover:bg-red-600 transition-colors"
+          >
+            Clear Data
+          </button>
+        </div>
         <input
           type="range"
           id="timeRange"

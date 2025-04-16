@@ -187,12 +187,19 @@ async def websocket_all_sensors_endpoint(websocket: WebSocket):
 
 # Background task to broadcast sensor data to connected clients
 async def broadcast_sensor_data():
-    """Generate mock data for each sensor and broadcast to connected clients"""
+    """Generate mock data for each sensor based on data_rate and broadcast to connected clients"""
     import math
     import random
     
-    # Keep track of the phase for each sensor to generate continuous sine waves
+    # Keep track of the phase and last value for each sensor to generate continuous, coherent waves
     sensor_phases = {}
+    sensor_last_values = {}
+    
+    # Keep track of sensor data rates
+    sensor_data_rates = {}
+    
+    # Time between broadcasts in seconds
+    broadcast_interval = 1.0
     
     while True:
         try:
@@ -212,67 +219,138 @@ async def broadcast_sensor_data():
                 # Get current timestamp
                 current_time = time.time()
                 
-                # Prepare batch data for all sensors
-                batch_data = {}
+                # Get database session
+                db = next(get_db())
                 
-                # For each active sensor, generate a new data point
-                for sensor_id in active_sensors:
-                    # Initialize phase if not exists
-                    if sensor_id not in sensor_phases:
-                        sensor_phases[sensor_id] = random.uniform(0, 2 * math.pi)
+                try:
+                    # Prepare batch data for all sensors
+                    batch_data = {}
                     
-                    # Generate a sine wave with some noise
-                    # Use a different frequency for each sensor
-                    frequency = 0.05 * (1 + (sensor_id % 5))  # Different frequencies for different sensors
+                    # Create a list of sensors to process (to avoid modifying the set during iteration)
+                    sensors_to_process = []
+                    inactive_sensors = []
                     
-                    # Update phase
-                    sensor_phases[sensor_id] += frequency
+                    # First, check which sensors are active by querying the database for all sensors
+                    # This ensures we always have the latest active status
+                    for sensor_id in active_sensors:
+                        # Always query the database to get the latest active status
+                        sensor = db.query(models.Sensor).filter(models.Sensor.id == sensor_id).first()
+                        if sensor and sensor.is_active:
+                            # Only include active sensors
+                            sensors_to_process.append(sensor_id)
+                            # Update the data rate in case it changed
+                            sensor_data_rates[sensor_id] = round(sensor.sensor_data_rate / 100, 0)
+                        else:
+                            # Track inactive sensors to remove later
+                            inactive_sensors.append(sensor_id)
                     
-                    # Generate value: sine wave + random noise
-                    base_value = math.sin(sensor_phases[sensor_id])
-                    noise = random.uniform(-0.1, 0.1)
-                    value = base_value + noise
+                    # Remove inactive sensors from the active_sensors set
+                    for sensor_id in inactive_sensors:
+                        active_sensors.discard(sensor_id)
+                        if sensor_id in sensor_data_rates:
+                            del sensor_data_rates[sensor_id]
                     
-                    # Occasionally add an artifact (spike)
-                    if random.random() < 0.05:  # 5% chance
-                        value += random.uniform(0.3, 0.7) * (1 if random.random() > 0.5 else -1)
+                    # For each active sensor, generate data points based on data_rate
+                    for sensor_id in sensors_to_process:
+                        
+                        data_rate = sensor_data_rates[sensor_id]
+                        
+                        # Calculate number of points to generate based on data_rate and broadcast interval
+                        # For example, if data_rate is 10Hz and broadcast_interval is 1 second, generate 10 points
+                        num_points = max(1, int(data_rate * broadcast_interval))
+                        
+                        # Time step between points in seconds
+                        time_step = broadcast_interval / num_points
+                        
+                        # Initialize phase if not exists
+                        if sensor_id not in sensor_phases:
+                            sensor_phases[sensor_id] = random.uniform(0, 2 * math.pi)
+                            sensor_last_values[sensor_id] = 0
+                        
+                        # Generate data points
+                        data_points = []
+                        
+                        # Base frequency - 3 cycles per minute (0.05Hz) with variation based on sensor_id
+                        base_frequency = 0.05 * (1 + (sensor_id % 5) * 0.2)
+                        
+                        for i in range(num_points):
+                            # Calculate timestamp for this point
+                            point_time = current_time - broadcast_interval + (i + 1) * time_step
+                            
+                            # Update phase gradually
+                            phase_increment = 2 * math.pi * base_frequency * time_step
+                            sensor_phases[sensor_id] += phase_increment
+                            
+                            # Get last value
+                            last_value = sensor_last_values[sensor_id]
+                            
+                            # Generate new base value from sine wave
+                            base_value = math.sin(sensor_phases[sensor_id])
+                            
+                            # Add small random variation (max 10% change from previous value)
+                            max_change = 0.1
+                            noise = random.uniform(-max_change, max_change)
+                            
+                            # Ensure coherent transition from last value (limit rate of change)
+                            target_value = base_value + noise
+                            max_step = 0.2 * time_step  # Max change per time step
+                            
+                            # Limit change to ensure coherence
+                            if target_value > last_value + max_step:
+                                value = last_value + max_step
+                            elif target_value < last_value - max_step:
+                                value = last_value - max_step
+                            else:
+                                value = target_value
+                            
+                            # Occasionally add a small artifact (5% chance)
+                            if random.random() < 0.05 * time_step:  # Scale chance with time step
+                                artifact = random.uniform(0.1, 0.3) * (1 if random.random() > 0.5 else -1)
+                                value += artifact
+                            
+                            # Clamp value between -1 and 1
+                            value = max(-1, min(1, value))
+                            
+                            # Store as last value for next iteration
+                            sensor_last_values[sensor_id] = value
+                            
+                            # Create data point
+                            data_points.append({
+                                "timestamp": point_time,
+                                "value": value
+                            })
+                        
+                        # Add to batch data
+                        batch_data[sensor_id] = data_points
+                        
+                        print(f"Generated {len(data_points)} points for sensor {sensor_id} (data_rate: {data_rate}Hz)")
                     
-                    # Clamp value between -1 and 1
-                    value = max(-1, min(1, value))
-                    
-                    # Create data point
-                    data_point = {
-                        "timestamp": current_time,
-                        "value": value
-                    }
-                    
-                    # Add to batch data
-                    batch_data[sensor_id] = [data_point]
-                
-                # Broadcast batch data to all global connections
-                if batch_data:
-                    print(f"Broadcasting mock data for {len(batch_data)} sensors")
-                    for websocket in manager.global_connections:
-                        try:
-                            # Only send data for sensors this connection is subscribed to
-                            if websocket in manager.global_subscriptions:
-                                subscribed_sensors = manager.global_subscriptions[websocket]
-                                filtered_batch = {
-                                    sensor_id: data
-                                    for sensor_id, data in batch_data.items()
-                                    if sensor_id in subscribed_sensors
-                                }
-                                
-                                if filtered_batch:
-                                    await websocket.send_json({
-                                        "event": "batch_data",
-                                        "data": filtered_batch
-                                    })
-                        except Exception as e:
-                            print(f"Error sending batch data to websocket: {e}")
+                    # Broadcast batch data to all global connections
+                    if batch_data:
+                        print(f"Broadcasting mock data for {len(batch_data)} sensors")
+                        for websocket in manager.global_connections:
+                            try:
+                                # Only send data for sensors this connection is subscribed to
+                                if websocket in manager.global_subscriptions:
+                                    subscribed_sensors = manager.global_subscriptions[websocket]
+                                    filtered_batch = {
+                                        sensor_id: data
+                                        for sensor_id, data in batch_data.items()
+                                        if sensor_id in subscribed_sensors
+                                    }
+                                    
+                                    if filtered_batch:
+                                        await websocket.send_json({
+                                            "event": "batch_data",
+                                            "data": filtered_batch
+                                        })
+                            except Exception as e:
+                                print(f"Error sending batch data to websocket: {e}")
+                finally:
+                    db.close()
             
-            # Sleep before generating new data - send batches once per second
-            await asyncio.sleep(1.0)  # Generate data every 1 second
+            # Sleep before generating new data
+            await asyncio.sleep(broadcast_interval)
         except Exception as e:
             print(f"Broadcast error: {e}")
             await asyncio.sleep(1)  # Wait a bit longer on error

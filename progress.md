@@ -55,6 +55,8 @@
 
 ## Recent Improvements
 - Completely redesigned data generation system using real-time sine waves
+- Implemented data generation based on each sensor's data_rate
+- Created coherent data transitions with limited rate of change
 - Implemented unique patterns for each sensor with different frequencies
 - Added proper timestamp handling and filtering based on time range
 - Enhanced chart visualization with highlighted latest data points
@@ -77,3 +79,5 @@
 - 2025-04-16: Improved data visualization with better debugging information
 - 2025-04-16: Completely redesigned data generation to use real-time sine waves
 - 2025-04-16: Enhanced chart visualization with highlighted latest data points
+- 2025-04-16: Implemented data generation based on sensor data_rate
+- 2025-04-16: Added coherent data transitions with limited rate of change

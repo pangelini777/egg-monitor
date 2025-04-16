@@ -63,3 +63,4 @@ coverage/
 # Logs
 logs/
 *.log
+backend/database/egg_monitor.db-journal
