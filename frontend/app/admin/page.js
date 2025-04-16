@@ -17,6 +17,9 @@ export default function AdminPanel() {
   const [editingUserData, setEditingUserData] = useState({ user_name: '', user_age: '' });
   const [editingSensor, setEditingSensor] = useState(null);
   const [editingSensorData, setEditingSensorData] = useState({ sensor_name: '', sensor_data_rate: '' });
+  
+  // State for assigning sensors
+  const [assigningSensorsToUser, setAssigningSensorsToUser] = useState(null);
 
   // Fetch users and sensors on component mount
   useEffect(() => {
@@ -191,9 +194,38 @@ export default function AdminPanel() {
     <main className="container mx-auto px-4 py-8">
       <header className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-primary-700">Admin Panel</h1>
-        <Link href="/" className="btn-secondary">
-          View Presentation
-        </Link>
+        <div className="flex space-x-4">
+          <button
+            onClick={async () => {
+              // Start mock data for all sensors
+              try {
+                const sensorsResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sensors`);
+                if (!sensorsResponse.ok) throw new Error('Failed to fetch sensors');
+                const sensorsData = await sensorsResponse.json();
+                
+                // Start mock data for each sensor
+                for (const sensor of sensorsData) {
+                  console.log(`Starting mock data for sensor ${sensor.id}`);
+                  await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sensors/${sensor.id}/mock/start`, {
+                    method: 'POST',
+                  });
+                }
+                
+                alert('Started mock data for all sensors');
+                fetchSensors();
+              } catch (error) {
+                console.error('Error starting mock data:', error);
+                alert('Error starting mock data');
+              }
+            }}
+            className="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-md transition-colors"
+          >
+            Start All Mock Data
+          </button>
+          <Link href="/" className="btn-secondary">
+            View Presentation
+          </Link>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -306,18 +338,79 @@ export default function AdminPanel() {
                           >
                             Delete
                           </button>
+                          <button 
+                            onClick={() => setAssigningSensorsToUser(user.id)} 
+                            className="text-green-600 hover:text-green-800"
+                          >
+                            Assign Sensors
+                          </button>
                         </div>
                       </div>
                       
-                      {user.sensors && user.sensors.length > 0 && (
-                        <div className="mt-2">
-                          <p className="text-sm font-medium text-gray-700">Sensors:</p>
-                          <ul className="text-sm text-gray-600 pl-4">
-                            {user.sensors.map((sensor) => (
-                              <li key={sensor.id}>{sensor.sensor_name}</li>
-                            ))}
-                          </ul>
+                      {assigningSensorsToUser === user.id ? (
+                        <div className="mt-4 border-t pt-4">
+                          <h4 className="text-md font-medium mb-2">Assign Sensors to {user.user_name}</h4>
+                          <div className="space-y-2">
+                            {sensors.length === 0 ? (
+                              <p className="text-gray-500">No sensors available.</p>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {sensors.map(sensor => {
+                                  // Check if this sensor is already assigned to the user
+                                  const isAssigned = user.sensors.some(s => s.id === sensor.id);
+                                  
+                                  return (
+                                    <div key={sensor.id} className="flex items-center space-x-2">
+                                      <button
+                                        onClick={async () => {
+                                          try {
+                                            const url = `${process.env.NEXT_PUBLIC_API_URL}/api/users/${user.id}/sensors/${sensor.id}`;
+                                            const response = await fetch(url, {
+                                              method: isAssigned ? 'DELETE' : 'POST',
+                                            });
+                                            
+                                            if (!response.ok) throw new Error('Failed to update sensor assignment');
+                                            
+                                            fetchUsers();
+                                          } catch (error) {
+                                            console.error('Error updating sensor assignment:', error);
+                                          }
+                                        }}
+                                        className={`px-2 py-1 rounded-md text-white text-sm ${
+                                          isAssigned 
+                                            ? 'bg-red-500 hover:bg-red-600' 
+                                            : 'bg-green-500 hover:bg-green-600'
+                                        }`}
+                                      >
+                                        {isAssigned ? 'Remove' : 'Assign'}
+                                      </button>
+                                      <span>{sensor.sensor_name}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-4">
+                            <button
+                              onClick={() => setAssigningSensorsToUser(null)}
+                              className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-1 px-3 rounded-md text-sm transition-colors"
+                            >
+                              Done
+                            </button>
+                          </div>
                         </div>
+                      ) : (
+                        user.sensors && user.sensors.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-sm font-medium text-gray-700">Sensors:</p>
+                            <ul className="text-sm text-gray-600 pl-4">
+                              {user.sensors.map((sensor) => (
+                                <li key={sensor.id}>{sensor.sensor_name}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )
                       )}
                     </>
                   )}

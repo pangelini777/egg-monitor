@@ -10,7 +10,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
  * @returns {Object} WebSocket connection state and data
  */
 const useWebSocket = (url, timeRange = 60, onMessage = null) => {
-  const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('CLOSED');
   const [error, setError] = useState(null);
   const [lastMessage, setLastMessage] = useState(null);
   
@@ -36,12 +36,20 @@ const useWebSocket = (url, timeRange = 60, onMessage = null) => {
     
     try {
       // Create new WebSocket connection
-      const ws = new WebSocket(url);
+      // Convert http/https to ws/wss if needed
+      const wsUrl = url.startsWith('http')
+        ? url.replace('http', 'ws')
+        : url.startsWith('/')
+          ? `${process.env.NEXT_PUBLIC_API_URL.replace('http', 'ws')}${url}`
+          : url;
+      
+      console.log('Connecting to WebSocket URL:', wsUrl);
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       
       // Set up event handlers
       ws.onopen = () => {
-        setIsConnected(true);
+        setConnectionStatus('OPEN');
         setError(null);
         
         // Send initial subscription message with time range
@@ -59,7 +67,7 @@ const useWebSocket = (url, timeRange = 60, onMessage = null) => {
       };
       
       ws.onclose = (event) => {
-        setIsConnected(false);
+        setConnectionStatus('CLOSED');
         
         // Clear ping interval
         if (pingIntervalRef.current) {
@@ -79,7 +87,11 @@ const useWebSocket = (url, timeRange = 60, onMessage = null) => {
       
       ws.onmessage = (event) => {
         try {
+          
+          // Parse the data
           const data = JSON.parse(event.data);
+          
+          // Store the parsed message data
           setLastMessage(data);
           
           // Call custom message handler if provided
@@ -88,6 +100,8 @@ const useWebSocket = (url, timeRange = 60, onMessage = null) => {
           }
         } catch (err) {
           console.error('Error parsing WebSocket message:', err);
+          // Store the raw message in case of parsing error
+          setLastMessage(event.data);
         }
       };
     } catch (err) {
@@ -101,9 +115,12 @@ const useWebSocket = (url, timeRange = 60, onMessage = null) => {
     }
   }, [url, timeRange, onMessage]);
   
-  // Connect when the component mounts or when dependencies change
+  // Connect when the component mounts
   useEffect(() => {
-    connect();
+    // Only connect if not already connected
+    if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+      connect();
+    }
     
     // Clean up on unmount
     return () => {
@@ -117,17 +134,17 @@ const useWebSocket = (url, timeRange = 60, onMessage = null) => {
         clearInterval(pingIntervalRef.current);
       }
     };
-  }, [connect]);
+  }, []); // Empty dependency array to ensure it only runs once on mount
   
   // Update subscription when timeRange changes
   useEffect(() => {
-    if (isConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (connectionStatus === 'OPEN' && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'subscribe',
         time_range: timeRange
       }));
     }
-  }, [timeRange, isConnected]);
+  }, [timeRange, connectionStatus]);
   
   // Function to manually send a message
   const sendMessage = useCallback((message) => {
@@ -144,7 +161,7 @@ const useWebSocket = (url, timeRange = 60, onMessage = null) => {
   }, [connect]);
   
   return {
-    isConnected,
+    connectionStatus,
     error,
     lastMessage,
     sendMessage,

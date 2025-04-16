@@ -5,6 +5,7 @@ import time
 import random
 import asyncio
 import threading
+import math
 
 from .. import models, schemas
 from ..database import get_db
@@ -19,7 +20,7 @@ router = APIRouter(
 mock_data_threads = {}
 
 def generate_mock_data(sensor_id: int, data_rate: float):
-    """Background task to generate mock sensor data"""
+    """Background task to generate realistic EGG mock data"""
     db = next(get_db())
     try:
         # Get the sensor
@@ -34,11 +35,36 @@ def generate_mock_data(sensor_id: int, data_rate: float):
         # Calculate sleep time based on data rate
         sleep_time = 1.0 / data_rate
         
+        # Variables for generating realistic EGG data
+        previous_value = 0.0
+        base_frequency = 0.05  # 3 cycles per minute = 0.05Hz
+        base_amplitude = 0.5
+        
         # Generate data until stopped
         while sensor_id in mock_data_threads and mock_data_threads[sensor_id].is_active:
-            # Create a new data point
+            # Create a new data point with realistic EGG pattern
             timestamp = time.time()
-            value = random.uniform(-1.0, 1.0)  # Random EGG value between -1 and 1
+            
+            # Base sine wave (3 cycles per minute)
+            base_sine = base_amplitude * math.sin(2 * math.pi * base_frequency * timestamp)
+            
+            # Add small random variations (10% of amplitude)
+            noise = (random.random() * 0.2) - 0.1
+            
+            # Add occasional artifacts (5% chance)
+            artifact = 0.0
+            if random.random() > 0.95:
+                artifact = (random.random() * 0.4) - 0.2
+            
+            # Ensure smooth transitions from previous value
+            smoothing_factor = 0.7
+            value = (smoothing_factor * previous_value) + ((1 - smoothing_factor) * (base_sine + noise + artifact))
+            
+            # Ensure value stays within -1 to 1 range
+            value = max(-1.0, min(1.0, value))
+            
+            # Update previous value for next iteration
+            previous_value = value
             
             data_point = models.SensorData(
                 sensor_id=sensor_id,

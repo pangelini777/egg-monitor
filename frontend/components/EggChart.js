@@ -3,11 +3,14 @@
 import { useRef, useEffect } from 'react';
 import * as d3 from 'd3';
 
-const EggChart = ({ data, width = 400, height = 200, timeRange = 60 }) => {
+const EggChart = ({ data, width = 400, height = 200, timeRange = 60, fixedYDomain = null }) => {
   const svgRef = useRef(null);
 
   useEffect(() => {
-    if (!data || data.length === 0) return;
+    if (!data || data.length === 0) {
+      return;
+    }
+    
 
     // Clear any existing chart
     d3.select(svgRef.current).selectAll("*").remove();
@@ -25,42 +28,189 @@ const EggChart = ({ data, width = 400, height = 200, timeRange = 60 }) => {
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
     // Set up scales
+    // Get the current time in seconds
     const now = Date.now() / 1000; // Current time in seconds
+    
+    // Use the current time and timeRange to determine the x-axis scale
+    // This ensures we're showing data within the specified time range
+    const minTime = now - timeRange;
+    const maxTime = now;
+    
+
+    
+    if (data.length > 0) {
+      // Extract timestamps for debugging
+      const timestamps = data.map(d => typeof d.timestamp === 'number' ? d.timestamp : parseFloat(d.timestamp));
+
+      
+      // Log min and max timestamps in the data
+      const dataMinTime = Math.min(...timestamps);
+      const dataMaxTime = Math.max(...timestamps);
+
+    }
+    
     const xScale = d3.scaleLinear()
-      .domain([now - timeRange, now])
+      .domain([minTime, maxTime])
       .range([0, innerWidth]);
 
-    const yScale = d3.scaleLinear()
-      .domain([-1, 1]) // EGG data typically ranges from -1 to 1
-      .range([innerHeight, 0]);
-
-    // Create line generator
-    const line = d3.line()
-      .x(d => xScale(d.timestamp))
-      .y(d => yScale(d.value))
-      .curve(d3.curveMonotoneX);
+    // Calculate y domain based on data or use fixed domain
+    const calculateYDomain = (data, padding = 0.1) => {
+      if (!data || data.length === 0) return [-1, 1]; // Default domain
+      
+      // Find min and max values
+      const minValue = Math.min(...data.map(d => d.value));
+      const maxValue = Math.max(...data.map(d => d.value));
+      
+      // Calculate range
+      const range = maxValue - minValue;
+      
+      // Add padding
+      const paddingAmount = range * padding;
+      
+      // Return domain with padding, but ensure it's at least -1 to 1
+      return [
+        Math.max(-1, minValue - paddingAmount),
+        Math.min(1, maxValue + paddingAmount)
+      ];
+    };
 
     // Filter data to only show points within the time range
-    const filteredData = data.filter(d => d.timestamp >= now - timeRange);
+    // First convert all timestamps to numbers for consistent comparison
+    const processedData = data.map(d => ({
+      timestamp: typeof d.timestamp === 'number' ? d.timestamp : parseFloat(d.timestamp),
+      value: typeof d.value === 'number' ? d.value : parseFloat(d.value)
+    })).filter(d => !isNaN(d.timestamp) && !isNaN(d.value));
+    
+    // Sort data by timestamp (ascending)
+    const sortedData = [...processedData].sort((a, b) => a.timestamp - b.timestamp);
+    
+    // Filter to only include data points from the last 'timeRange' seconds
+    const filteredData = sortedData.filter(d => d.timestamp >= minTime && d.timestamp <= maxTime);
+    
 
+    const yDomain = fixedYDomain || calculateYDomain(filteredData);
+    const yScale = d3.scaleLinear()
+      .domain(yDomain)
+      .range([innerHeight, 0]);
+
+    // Create line generator with defined check to handle missing or invalid values
+    const line = d3.line()
+      .defined(d => {
+        // Check if both timestamp and value are valid numbers
+        const timestamp = typeof d.timestamp === 'number' ? d.timestamp : parseFloat(d.timestamp);
+        const value = typeof d.value === 'number' ? d.value : parseFloat(d.value);
+        return !isNaN(timestamp) && !isNaN(value);
+      })
+      .x(d => {
+        // Ensure timestamp is a number
+        const timestamp = typeof d.timestamp === 'number' ? d.timestamp : parseFloat(d.timestamp);
+        return xScale(timestamp);
+      })
+      .y(d => {
+        // Ensure value is a number
+        const value = typeof d.value === 'number' ? d.value : parseFloat(d.value);
+        return yScale(value);
+      })
+      .curve(d3.curveCardinal.tension(0.5));
+
+    // Add background
+    svg.append("rect")
+      .attr("x", 0)
+      .attr("y", 0)
+      .attr("width", innerWidth)
+      .attr("height", innerHeight)
+      .attr("fill", "#f8fafc") // Tailwind slate-50
+      .attr("rx", 4);
+      
+    // Add a baseline at y=0
+    svg.append("line")
+      .attr("x1", 0)
+      .attr("y1", yScale(0))
+      .attr("x2", innerWidth)
+      .attr("y2", yScale(0))
+      .attr("stroke", "#e5e7eb")
+      .attr("stroke-width", 1)
+      .attr("stroke-dasharray", "4,4");
+      
     // Add the line path
-    svg.append("path")
-      .datum(filteredData)
-      .attr("fill", "none")
-      .attr("stroke", "#0ea5e9") // Tailwind primary-500
-      .attr("stroke-width", 2)
-      .attr("d", line);
+    if (filteredData.length > 0) {
+      try {
+        // Data is already sorted by timestamp from the filtering step
+        const chartData = filteredData;
+        
 
-    // Add data points
-    svg.selectAll(".data-point")
-      .data(filteredData)
-      .enter()
-      .append("circle")
-      .attr("class", "data-point")
-      .attr("cx", d => xScale(d.timestamp))
-      .attr("cy", d => yScale(d.value))
-      .attr("r", 3)
-      .attr("fill", "#0ea5e9");
+        
+        const pathData = line(chartData);
+        
+        // Draw the line
+        svg.append("path")
+          .datum(chartData)
+          .attr("fill", "none")
+          .attr("stroke", "#10b981") // Tailwind green-500
+          .attr("stroke-width", 2)
+          .attr("d", line);
+        
+        // Add data points as circles for visibility
+        svg.selectAll("circle")
+          .data(chartData)
+          .enter()
+          .append("circle")
+          .attr("cx", d => {
+            const timestamp = typeof d.timestamp === 'number' ? d.timestamp : parseFloat(d.timestamp);
+            return xScale(timestamp);
+          })
+          .attr("cy", d => {
+            const value = typeof d.value === 'number' ? d.value : parseFloat(d.value);
+            return yScale(value);
+          })
+          .attr("r", 3)
+          .attr("fill", "#10b981")
+          .attr("stroke", "white")
+          .attr("stroke-width", 1);
+          
+        // Highlight the latest data point with a larger, red circle
+        if (chartData.length > 0) {
+          const latest = chartData[chartData.length - 1];
+          svg.append("circle")
+            .attr("cx", xScale(typeof latest.timestamp === 'number' ? latest.timestamp : parseFloat(latest.timestamp)))
+            .attr("cy", yScale(typeof latest.value === 'number' ? latest.value : parseFloat(latest.value)))
+            .attr("r", 6)
+            .attr("fill", "red")
+            .attr("stroke", "white")
+            .attr("stroke-width", 2);
+        }
+      } catch (error) {
+        console.error('Error generating line path:', error);
+      }
+    } 
+
+    // Add grid lines
+    svg.append("g")
+      .attr("class", "grid")
+      .attr("transform", `translate(0,${innerHeight})`)
+      .call(d3.axisBottom(xScale)
+        .ticks(5)
+        .tickSize(-innerHeight)
+        .tickFormat("")
+      )
+      .call(g => g.select(".domain").remove())
+      .call(g => g.selectAll(".tick line")
+        .attr("stroke", "#e5e7eb")
+        .attr("stroke-opacity", 0.7)
+      );
+
+    svg.append("g")
+      .attr("class", "grid")
+      .call(d3.axisLeft(yScale)
+        .ticks(5)
+        .tickSize(-innerWidth)
+        .tickFormat("")
+      )
+      .call(g => g.select(".domain").remove())
+      .call(g => g.selectAll(".tick line")
+        .attr("stroke", "#e5e7eb")
+        .attr("stroke-opacity", 0.7)
+      );
 
     // Add axes
     const xAxis = d3.axisBottom(xScale)
